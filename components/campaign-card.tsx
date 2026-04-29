@@ -6,11 +6,7 @@ import { useWallet } from "@/app/wallet-context";
 import { useCampaign, useMyDonation } from "@/hooks/use-campaign";
 import { useDonate, useClose, useRefund } from "@/hooks/use-send-tx";
 import { stroopsToXlm } from "@/lib/soroban";
-import {
-  toError,
-  UserRejectedError,
-  InsufficientBalanceError,
-} from "@/lib/errors";
+import { toError, UserRejectedError, InsufficientBalanceError } from "@/lib/errors";
 
 const EXPLORER = "https://stellar.expert/explorer/testnet/tx";
 
@@ -29,14 +25,14 @@ function shortAddr(a: string) {
   return `${a.slice(0, 4)}...${a.slice(-4)}`;
 }
 
-export function CampaignCard() {
+export function CampaignCard({ campaignId }: { campaignId: number }) {
   const { address } = useWallet();
   const qc = useQueryClient();
-  const { data, isLoading, isError, refetch } = useCampaign();
-  const my = useMyDonation(address);
-  const donate = useDonate(address);
-  const close = useClose(address);
-  const refund = useRefund(address);
+  const { data, isLoading, isError, refetch } = useCampaign(campaignId);
+  const my = useMyDonation(campaignId, address);
+  const donate = useDonate(address, campaignId);
+  const close = useClose(address, campaignId);
+  const refund = useRefund(address, campaignId);
 
   const [amount, setAmount] = useState("");
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
@@ -58,9 +54,8 @@ export function CampaignCard() {
 
   if (isError || !data) {
     return (
-      <div className="bubble border-danger/40 p-6 text-sm">
-        Could not read the campaign. Confirm{" "}
-        <code>NEXT_PUBLIC_MAIN_CONTRACT_ID</code> in <code>.env.local</code>.
+      <div className="bubble border-danger/40 p-6 text-sm text-danger">
+        Could not load campaign #{campaignId}.
       </div>
     );
   }
@@ -75,18 +70,16 @@ export function CampaignCard() {
 
   const total = data.donated + data.matched;
   const totalCap = data.matchCap * 2n;
-  const totalPct =
-    totalCap === 0n ? 0 : Number((total * 1000n) / totalCap) / 10;
-  const donatedPct =
-    totalCap === 0n ? 0 : Number((data.donated * 1000n) / totalCap) / 10;
+  const totalPct = totalCap === 0n ? 0 : Number((total * 1000n) / totalCap) / 10;
+  const donatedPct = totalCap === 0n ? 0 : Number((data.donated * 1000n) / totalCap) / 10;
 
   function bump(hash?: string) {
     if (hash) setLastHash(hash);
     qc.invalidateQueries({ queryKey: ["campaign"] });
+    qc.invalidateQueries({ queryKey: ["campaigns"] });
     qc.invalidateQueries({ queryKey: ["my-donation"] });
     qc.invalidateQueries({ queryKey: ["events"] });
     qc.invalidateQueries({ queryKey: ["balance", address] });
-    qc.invalidateQueries({ queryKey: ["global-stats"] });
     refetch();
   }
 
@@ -97,43 +90,34 @@ export function CampaignCard() {
       const r = await donate.mutateAsync(amount);
       setAmount("");
       bump(r.contractHash);
-    } catch {
-      /* shown */
-    }
+    } catch { /* shown below */ }
   }
   async function onClose() {
     if (!address) return;
     try {
       const r = await close.mutateAsync();
       bump(r.contractHash);
-    } catch {
-      /* shown */
-    }
+    } catch { /* shown below */ }
   }
   async function onRefund() {
     if (!address) return;
     try {
       const r = await refund.mutateAsync();
       bump(r.contractHash);
-    } catch {
-      /* shown */
-    }
+    } catch { /* shown below */ }
   }
 
-  const err =
-    donate.error ?? close.error ?? refund.error
-      ? toError(donate.error ?? close.error ?? refund.error)
-      : null;
+  const err = donate.error ?? close.error ?? refund.error
+    ? toError(donate.error ?? close.error ?? refund.error)
+    : null;
   const pending = donate.isPending || close.isPending || refund.isPending;
 
   return (
     <article className="bubble p-6 sm:p-8">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-subtle">
-            For
-          </p>
-          <h2 className="mt-1 text-xl font-semibold leading-tight sm:text-2xl">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-widest text-subtle">Campaign #{campaignId}</p>
+          <h2 className="mt-1 truncate text-xl font-semibold leading-tight sm:text-2xl">
             {data.title || "(untitled)"}
           </h2>
           <p className="mt-1 text-xs text-muted">
@@ -141,7 +125,7 @@ export function CampaignCard() {
           </p>
         </div>
         <span
-          className={`tag-pill ${
+          className={`shrink-0 tag-pill ${
             isClosed
               ? "bg-elevated text-muted"
               : isRefunding
@@ -154,6 +138,12 @@ export function CampaignCard() {
       </div>
 
       <div className="mt-5">
+        <div className="mb-2 flex items-center justify-between gap-2 text-xs text-subtle font-semibold">
+          <span>
+            Sponsor&apos;s match remaining:{" "}
+            <span className="font-mono text-fg">{stroopsToXlm(data.matchCap - data.matched)} XLM</span>
+          </span>
+        </div>
         <div className="flex items-baseline justify-between text-sm">
           <span className="font-mono font-semibold">
             {stroopsToXlm(total)}{" "}
@@ -197,9 +187,7 @@ export function CampaignCard() {
 
       <div className="mt-6 border-t border-border pt-5">
         {!address && (
-          <p className="text-sm text-muted">
-            Connect a wallet to donate, match, or refund.
-          </p>
+          <p className="text-sm text-muted">Connect a wallet to donate, close, or refund.</p>
         )}
 
         {address && isOpen && (
@@ -242,9 +230,7 @@ export function CampaignCard() {
             disabled={pending}
             className="btn-soft w-full px-4 py-2.5 text-sm"
           >
-            {refund.isPending
-              ? "Refunding..."
-              : `Refund ${stroopsToXlm(myAmount)} XLM`}
+            {refund.isPending ? "Refunding..." : `Refund ${stroopsToXlm(myAmount)} XLM`}
           </button>
         )}
 
@@ -252,7 +238,7 @@ export function CampaignCard() {
           <p className="text-sm text-muted">
             {myRefunded
               ? "You already refunded."
-              : "Deadline passed without close. Donors can refund."}
+              : "Deadline passed. Donors can now refund their pledges."}
           </p>
         )}
 

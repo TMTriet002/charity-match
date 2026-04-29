@@ -22,8 +22,8 @@ export function StatsStrip() {
           loading={isLoading}
         />
         <Stat
-          label="Donors"
-          value={data ? String(data.donors) : "..."}
+          label="Campaigns"
+          value={data ? String(data.campaignCount) : "..."}
           loading={isLoading}
         />
         <Stat

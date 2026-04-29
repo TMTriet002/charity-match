@@ -2,12 +2,11 @@ export function HeroSection() {
   return (
     <section className="mt-2">
       <p className="text-base leading-relaxed sm:text-lg">
-        Donate to a cause and the sponsor matches you{" "}
-        <span className="rounded bg-[var(--color-accent-3)] px-1 font-medium">
-          1:1
-        </span>{" "}
-        until the cap runs out. If the campaign closes, the charity gets it all.
-        If the deadline passes without close, you get your donation back.
+        Sponsors create matching campaigns and escrow XLM. Donors give, and the
+        sponsor matches{" "}
+        <span className="rounded bg-[var(--color-accent-3)] px-1 font-medium">1:1</span>{" "}
+        up to the cap. Close the campaign to send everything to charity - or let
+        the deadline pass and donors can refund.
       </p>
     </section>
   );

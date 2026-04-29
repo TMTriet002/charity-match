@@ -1,35 +1,27 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useCampaign } from "./use-campaign";
-import { getRecentEvents } from "@/lib/events";
+import { useAllCampaigns } from "./use-campaign";
 
 export type GlobalStats = {
   donated: bigint;
   matched: bigint;
   matchCap: bigint;
   donors: number;
-  status: "Open" | "Closed";
+  campaignCount: number;
 };
 
-export function useGlobalStats() {
-  const mainId = process.env.NEXT_PUBLIC_MAIN_CONTRACT_ID;
-  const { data } = useCampaign();
+export function useGlobalStats(): { data: GlobalStats | undefined; isLoading: boolean } {
+  const { data: campaigns, isLoading } = useAllCampaigns();
 
-  return useQuery<GlobalStats>({
-    queryKey: ["global-stats", mainId, data?.donated?.toString()],
-    queryFn: async () => {
-      if (!mainId) throw new Error("main contract id not configured");
-      await getRecentEvents(mainId).catch(() => []);
-      return {
-        donated: data?.donated ?? 0n,
-        matched: data?.matched ?? 0n,
-        matchCap: data?.matchCap ?? 0n,
-        donors: data?.donors ?? 0,
-        status: data?.status ?? "Open",
-      };
-    },
-    enabled: !!mainId,
-    refetchInterval: 30_000,
-  });
+  if (!campaigns) return { data: undefined, isLoading };
+
+  const data: GlobalStats = {
+    donated: campaigns.reduce((a, c) => a + c.donated, 0n),
+    matched: campaigns.reduce((a, c) => a + c.matched, 0n),
+    matchCap: campaigns.reduce((a, c) => a + c.matchCap, 0n),
+    donors: campaigns.reduce((a, c) => a + c.donors, 0),
+    campaignCount: campaigns.length,
+  };
+
+  return { data, isLoading };
 }

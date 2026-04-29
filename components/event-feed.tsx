@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useContractEvents } from "@/hooks/use-contract-events";
 import type { ContractEvent } from "@/lib/events";
 import { stroopsToXlm } from "@/lib/soroban";
@@ -26,8 +27,8 @@ export function EventFeed() {
         <div className="text-xs font-semibold uppercase tracking-wider text-subtle">
           Activity
         </div>
-        <span className="flex items-center gap-1.5 text-[10px] text-muted">
-          <span className="text-[10px] font-semibold text-[var(--color-accent)]">matching now</span>
+        <span className="text-[10px] font-semibold text-[var(--color-accent)]">
+          live
         </span>
       </div>
 
@@ -38,13 +39,11 @@ export function EventFeed() {
           ))}
         </div>
       ) : isError ? (
-        <div className="mt-3 text-sm text-danger">Failed to load events</div>
+        <div className="mt-3 text-sm text-danger">Failed to load events.</div>
       ) : !data || data.length === 0 ? (
-        <div className="mt-3 text-sm text-subtle">
-          No donations yet. Be the first.
-        </div>
+        <div className="mt-3 text-sm text-subtle">No activity yet.</div>
       ) : (
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-3 space-y-2">
           {data.map((e) => (
             <Row key={e.id} e={e} />
           ))}
@@ -56,30 +55,27 @@ export function EventFeed() {
 
 function Row({ e }: { e: ContractEvent }) {
   const tx = `https://stellar.expert/explorer/testnet/tx/${e.txHash}`;
+  const campaignLink = `/campaign/${e.campaignId}`;
 
   if (e.kind === "donate") {
     return (
       <li className="rounded-2xl border border-border p-3 text-sm">
         <div className="flex items-baseline justify-between gap-2">
           <span>
+            <Link href={campaignLink} className="font-semibold text-[var(--color-accent)] hover:underline">
+              #{e.campaignId}
+            </Link>{" "}
             <span className="font-mono text-xs">{shortAddr(e.donor)}</span>{" "}
             donated{" "}
-            <span className="font-semibold">
-              {stroopsToXlm(e.amount)} XLM
-            </span>
+            <span className="font-semibold">{stroopsToXlm(e.amount)} XLM</span>
           </span>
-          <a
-            href={tx}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-muted hover:text-fg"
-          >
+          <a href={tx} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-muted hover:text-fg">
             {timeAgo(e.ledgerClosedAt)}
           </a>
         </div>
         {e.matched > 0n && (
-          <div className="mt-1 text-xs text-[var(--color-accent-2)]">
-            sponsor matched +{stroopsToXlm(e.matched)} XLM
+          <div className="mt-0.5 text-xs text-[var(--color-accent-2)]">
+            +{stroopsToXlm(e.matched)} matched
           </div>
         )}
       </li>
@@ -91,19 +87,15 @@ function Row({ e }: { e: ContractEvent }) {
       <li className="rounded-2xl border border-border bg-[var(--color-elevated)] p-3 text-sm">
         <div className="flex items-baseline justify-between gap-2">
           <span>
-            campaign closed,{" "}
+            <Link href={campaignLink} className="font-semibold text-[var(--color-accent)] hover:underline">
+              #{e.campaignId}
+            </Link>{" "}
+            closed,{" "}
             <span className="font-mono text-xs">{shortAddr(e.charity)}</span>{" "}
             received{" "}
-            <span className="font-semibold">
-              {stroopsToXlm(e.payout)} XLM
-            </span>
+            <span className="font-semibold">{stroopsToXlm(e.payout)} XLM</span>
           </span>
-          <a
-            href={tx}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-muted hover:text-fg"
-          >
+          <a href={tx} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-muted hover:text-fg">
             {timeAgo(e.ledgerClosedAt)}
           </a>
         </div>
@@ -115,16 +107,14 @@ function Row({ e }: { e: ContractEvent }) {
     <li className="rounded-2xl border border-border p-3 text-sm">
       <div className="flex items-baseline justify-between gap-2">
         <span>
+          <Link href={campaignLink} className="font-semibold text-[var(--color-accent)] hover:underline">
+            #{e.campaignId}
+          </Link>{" "}
           <span className="font-mono text-xs">{shortAddr(e.donor)}</span>{" "}
           refunded{" "}
           <span className="font-semibold">{stroopsToXlm(e.amount)} XLM</span>
         </span>
-        <a
-          href={tx}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-muted hover:text-fg"
-        >
+        <a href={tx} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-muted hover:text-fg">
           {timeAgo(e.ledgerClosedAt)}
         </a>
       </div>

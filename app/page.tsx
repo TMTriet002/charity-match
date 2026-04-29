@@ -2,6 +2,7 @@ import { WalletButton } from "@/components/wallet-button";
 import { Dashboard } from "@/components/dashboard";
 import { HeroSection } from "@/components/hero-section";
 import { StatsStrip } from "@/components/stats-strip";
+import { EventFeed } from "@/components/event-feed";
 
 export default function Home() {
   return (
@@ -9,9 +10,7 @@ export default function Home() {
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
         <header className="flex items-center justify-between gap-3 pb-4">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            <span
-              className="bg-gradient-to-r from-[#ec4899] to-[#7c3aed] bg-clip-text text-transparent"
-            >
+            <span className="bg-gradient-to-r from-[#ec4899] to-[#7c3aed] bg-clip-text text-transparent">
               Match Up
             </span>
           </h1>
@@ -21,8 +20,12 @@ export default function Home() {
         <HeroSection />
         <StatsStrip />
 
-        <div className="mt-8">
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_300px]">
           <Dashboard />
+
+          <aside className="space-y-5">
+            <EventFeed />
+          </aside>
         </div>
 
         <footer className="mt-12 text-center text-xs text-muted">
