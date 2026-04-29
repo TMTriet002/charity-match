@@ -3,6 +3,8 @@
 > Donate, the sponsor doubles it 1:1 up to the cap, the charity gets the lot.
 
 Match Up is a small Stellar Testnet dApp where donors pledge XLM to a cause and a sponsor matches every donation 1:1 up to a fixed cap. The interesting part is the on-chain match-cap math; the rest is a friendly y2k-style UI on top. The README is in FAQ form, so feel free to skim.
+<img width="1257" height="712" alt="image" src="https://github.com/user-attachments/assets/1608cde0-de91-4e4e-9643-d93353387756" />
+
 
 [![CI](https://github.com/TMTriet002/charity-match/actions/workflows/ci.yml/badge.svg)](https://github.com/TMTriet002/charity-match/actions)
 [![Live](https://img.shields.io/badge/live-demo-ec4899)](https://match-up-stellar.vercel.app)
@@ -79,7 +81,9 @@ SPONSOR=$(stellar keys address bob) \
 cd contract && cargo test
 ```
 
-Eight tests covering: 1:1 matching on the happy path, cap enforcement on a donation that exceeds the remaining cap, donor-count dedupe across re-donations, deadline guard, sponsor close + payout math, non-sponsor close rejection, refund-after-deadline, and refund-after-close rejection. Test output screenshot in `docs/screenshots/tests.png`.
+Eight tests covering: 1:1 matching on the happy path, cap enforcement on a donation that exceeds the remaining cap, donor-count dedupe across re-donations, deadline guard, sponsor close + payout math, non-sponsor close rejection, refund-after-deadline, and refund-after-close rejection.
+<img width="680" height="190" alt="image" src="https://github.com/user-attachments/assets/57aa8355-0b43-462c-a453-13af7dff518c" />
+
 
 ### Does CI run?
 
@@ -91,7 +95,9 @@ Frontend: Vercel's GitHub integration auto-builds on every push to `main` using 
 
 ### What about mobile?
 
-Mobile-first. The CTA pill stays full width below 640px, the gradient bar collapses to two stacked rows, the wallet button shows only the address shorthand. Screenshot at `docs/screenshots/mobile.png`.
+Mobile-first. The CTA pill stays full width below 640px, the gradient bar collapses to two stacked rows, the wallet button shows only the address shorthand. 
+<img width="423" height="646" alt="image" src="https://github.com/user-attachments/assets/9c86cabb-59ba-4782-a1d1-19086e47df0c" />
+
 
 ### What errors does it handle?
 
