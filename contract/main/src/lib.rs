@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token,
-    Address, Env, String,
+    Address, Env, String, Vec,
 };
 
 #[contracterror]
@@ -17,6 +17,7 @@ pub enum Error {
     AlreadyRefunded = 6,
     NotSponsor = 7,
     NoDonation = 8,
+    CampaignNotFound = 9,
 }
 
 #[contracttype]
@@ -28,19 +29,33 @@ pub enum Status {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct Campaign {
+    pub charity: Address,
+    pub sponsor: Address,
+    pub title: String,
+    pub match_cap: i128,
+    pub donated: i128,
+    pub matched: i128,
+    pub deadline: u64,
+    pub donors: u32,
+    pub status: Status,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct DonorKey {
+    pub campaign_id: u32,
+    pub donor: Address,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Xlm,
-    Charity,
-    Sponsor,
-    Title,
-    MatchCap,
-    Donated,
-    Matched,
-    Deadline,
-    Status,
-    Donors,
-    Donation(Address),
-    Refunded(Address),
+    NextId,
+    Campaign(u32),
+    Donation(DonorKey),
+    Refunded(DonorKey),
 }
 
 fn xlm_client(env: &Env) -> Result<token::Client<'_>, Error> {
@@ -52,218 +67,187 @@ fn xlm_client(env: &Env) -> Result<token::Client<'_>, Error> {
     Ok(token::Client::new(env, &addr))
 }
 
+fn load(env: &Env, id: u32) -> Result<Campaign, Error> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Campaign(id))
+        .ok_or(Error::CampaignNotFound)
+}
+
+fn save(env: &Env, id: u32, c: &Campaign) {
+    env.storage().persistent().set(&DataKey::Campaign(id), c);
+}
+
 #[contract]
 pub struct CharityMatch;
 
 #[contractimpl]
 impl CharityMatch {
-    pub fn __constructor(
+    pub fn __constructor(env: Env, xlm: Address) {
+        env.storage().instance().set(&DataKey::Xlm, &xlm);
+        env.storage().instance().set(&DataKey::NextId, &0u32);
+    }
+
+    pub fn create_campaign(
         env: Env,
-        xlm: Address,
-        charity: Address,
         sponsor: Address,
+        charity: Address,
         title: String,
         match_cap: i128,
         deadline: u64,
-    ) {
+    ) -> Result<u32, Error> {
         sponsor.require_auth();
-        env.storage().instance().set(&DataKey::Xlm, &xlm);
-        env.storage().instance().set(&DataKey::Charity, &charity);
-        env.storage().instance().set(&DataKey::Sponsor, &sponsor);
-        env.storage().instance().set(&DataKey::Title, &title);
-        env.storage().instance().set(&DataKey::MatchCap, &match_cap);
-        env.storage().instance().set(&DataKey::Donated, &0_i128);
-        env.storage().instance().set(&DataKey::Matched, &0_i128);
-        env.storage().instance().set(&DataKey::Deadline, &deadline);
-        env.storage().instance().set(&DataKey::Status, &Status::Open);
-        env.storage().instance().set(&DataKey::Donors, &0_u32);
-
-        // sponsor escrows the full match cap up front
-        if match_cap > 0 {
-            let t = token::Client::new(&env, &xlm);
-            t.transfer(&sponsor, &env.current_contract_address(), &match_cap);
+        if match_cap < 0 {
+            return Err(Error::AmountMustBePositive);
         }
+
+        let id: u32 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
+        let campaign = Campaign {
+            charity: charity.clone(),
+            sponsor: sponsor.clone(),
+            title,
+            match_cap,
+            donated: 0,
+            matched: 0,
+            deadline,
+            donors: 0,
+            status: Status::Open,
+        };
+        save(&env, id, &campaign);
+        env.storage().instance().set(&DataKey::NextId, &(id + 1));
+
+        if match_cap > 0 {
+            xlm_client(&env)?.transfer(&sponsor, &env.current_contract_address(), &match_cap);
+        }
+
+        env.events()
+            .publish((symbol_short!("create"), id), match_cap);
+
+        Ok(id)
     }
 
-    pub fn donate(env: Env, donor: Address, amount: i128) -> Result<i128, Error> {
+    pub fn donate(env: Env, campaign_id: u32, donor: Address, amount: i128) -> Result<i128, Error> {
         donor.require_auth();
         if amount <= 0 {
             return Err(Error::AmountMustBePositive);
         }
-        let status: Status = env
-            .storage()
-            .instance()
-            .get(&DataKey::Status)
-            .ok_or(Error::NotInitialized)?;
-        if status != Status::Open {
+        let mut c = load(&env, campaign_id)?;
+        if c.status != Status::Open {
             return Err(Error::AlreadyClosed);
         }
-        let deadline: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Deadline)
-            .ok_or(Error::NotInitialized)?;
-        if env.ledger().timestamp() >= deadline {
+        if env.ledger().timestamp() >= c.deadline {
             return Err(Error::DeadlinePassed);
         }
 
-        let cap: i128 = env.storage().instance().get(&DataKey::MatchCap).unwrap_or(0);
-        let matched: i128 = env.storage().instance().get(&DataKey::Matched).unwrap_or(0);
-        let remaining = cap - matched;
+        let remaining = c.match_cap - c.matched;
         let match_amount = if remaining > 0 {
             if amount < remaining { amount } else { remaining }
         } else {
             0
         };
 
-        let donated: i128 = env.storage().instance().get(&DataKey::Donated).unwrap_or(0);
-        env.storage().instance().set(&DataKey::Donated, &(donated + amount));
-        env.storage()
-            .instance()
-            .set(&DataKey::Matched, &(matched + match_amount));
+        c.donated += amount;
+        c.matched += match_amount;
 
-        let key = DataKey::Donation(donor.clone());
-        let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        let first = prev == 0;
-        env.storage().persistent().set(&key, &(prev + amount));
-
-        if first {
-            let donors: u32 = env.storage().instance().get(&DataKey::Donors).unwrap_or(0);
-            env.storage().instance().set(&DataKey::Donors, &(donors + 1));
+        let dk = DataKey::Donation(DonorKey { campaign_id, donor: donor.clone() });
+        let prev: i128 = env.storage().persistent().get(&dk).unwrap_or(0);
+        if prev == 0 {
+            c.donors += 1;
         }
+        env.storage().persistent().set(&dk, &(prev + amount));
+        save(&env, campaign_id, &c);
 
-        let t = xlm_client(&env)?;
-        t.transfer(&donor, &env.current_contract_address(), &amount);
+        xlm_client(&env)?.transfer(&donor, &env.current_contract_address(), &amount);
 
         env.events()
-            .publish((symbol_short!("donate"), donor), (amount, match_amount));
+            .publish((symbol_short!("donate"), campaign_id, donor), (amount, match_amount));
         Ok(match_amount)
     }
 
-    pub fn close(env: Env, sponsor: Address) -> Result<i128, Error> {
-        let stored: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Sponsor)
-            .ok_or(Error::NotInitialized)?;
-        if stored != sponsor {
+    pub fn close(env: Env, campaign_id: u32, sponsor: Address) -> Result<i128, Error> {
+        let mut c = load(&env, campaign_id)?;
+        if c.sponsor != sponsor {
             return Err(Error::NotSponsor);
         }
         sponsor.require_auth();
-        let status: Status = env
-            .storage()
-            .instance()
-            .get(&DataKey::Status)
-            .ok_or(Error::NotInitialized)?;
-        if status != Status::Open {
+        if c.status != Status::Open {
             return Err(Error::AlreadyClosed);
         }
-        let donated: i128 = env.storage().instance().get(&DataKey::Donated).unwrap_or(0);
-        let matched: i128 = env.storage().instance().get(&DataKey::Matched).unwrap_or(0);
-        let payout = donated + matched;
 
-        env.storage().instance().set(&DataKey::Status, &Status::Closed);
-        let charity: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Charity)
-            .ok_or(Error::NotInitialized)?;
-
-        let cap: i128 = env.storage().instance().get(&DataKey::MatchCap).unwrap_or(0);
-        let unused_match = cap - matched;
+        let payout = c.donated + c.matched;
+        let unused = c.match_cap - c.matched;
+        let charity = c.charity.clone();
+        c.status = Status::Closed;
+        save(&env, campaign_id, &c);
 
         let t = xlm_client(&env)?;
-        t.transfer(&env.current_contract_address(), &charity, &payout);
-        if unused_match > 0 {
-            t.transfer(&env.current_contract_address(), &sponsor, &unused_match);
+        if payout > 0 {
+            t.transfer(&env.current_contract_address(), &charity, &payout);
+        }
+        if unused > 0 {
+            t.transfer(&env.current_contract_address(), &sponsor, &unused);
         }
 
         env.events()
-            .publish((symbol_short!("close"), charity), payout);
+            .publish((symbol_short!("close"), campaign_id, charity), payout);
         Ok(payout)
     }
 
-    pub fn refund(env: Env, donor: Address) -> Result<i128, Error> {
+    pub fn refund(env: Env, campaign_id: u32, donor: Address) -> Result<i128, Error> {
         donor.require_auth();
-        let status: Status = env
-            .storage()
-            .instance()
-            .get(&DataKey::Status)
-            .ok_or(Error::NotInitialized)?;
-        if status == Status::Closed {
+        let c = load(&env, campaign_id)?;
+        if c.status == Status::Closed {
             return Err(Error::AlreadyClosed);
         }
-        let deadline: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Deadline)
-            .ok_or(Error::NotInitialized)?;
-        if env.ledger().timestamp() < deadline {
+        if env.ledger().timestamp() < c.deadline {
             return Err(Error::DeadlineNotPassed);
         }
-        if env.storage().persistent().has(&DataKey::Refunded(donor.clone())) {
+        let rk = DataKey::Refunded(DonorKey { campaign_id, donor: donor.clone() });
+        if env.storage().persistent().has(&rk) {
             return Err(Error::AlreadyRefunded);
         }
+        let dk = DataKey::Donation(DonorKey { campaign_id, donor: donor.clone() });
         let amount: i128 = env
             .storage()
             .persistent()
-            .get(&DataKey::Donation(donor.clone()))
+            .get(&dk)
             .ok_or(Error::NoDonation)?;
         if amount <= 0 {
             return Err(Error::NoDonation);
         }
-        env.storage()
-            .persistent()
-            .set(&DataKey::Refunded(donor.clone()), &true);
 
-        let t = xlm_client(&env)?;
-        t.transfer(&env.current_contract_address(), &donor, &amount);
+        env.storage().persistent().set(&rk, &true);
+        xlm_client(&env)?.transfer(&env.current_contract_address(), &donor, &amount);
 
         env.events()
-            .publish((symbol_short!("refund"), donor), amount);
+            .publish((symbol_short!("refund"), campaign_id, donor), amount);
         Ok(amount)
     }
 
-    pub fn info(
-        env: Env,
-    ) -> (Address, Address, String, i128, i128, i128, u64, u32, Status) {
-        let charity: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Charity)
-            .unwrap();
-        let sponsor: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Sponsor)
-            .unwrap();
-        let title: String = env
-            .storage()
-            .instance()
-            .get(&DataKey::Title)
-            .unwrap_or_else(|| String::from_str(&env, ""));
-        let match_cap: i128 = env.storage().instance().get(&DataKey::MatchCap).unwrap_or(0);
-        let donated: i128 = env.storage().instance().get(&DataKey::Donated).unwrap_or(0);
-        let matched: i128 = env.storage().instance().get(&DataKey::Matched).unwrap_or(0);
-        let deadline: u64 = env.storage().instance().get(&DataKey::Deadline).unwrap_or(0);
-        let donors: u32 = env.storage().instance().get(&DataKey::Donors).unwrap_or(0);
-        let status: Status = env
-            .storage()
-            .instance()
-            .get(&DataKey::Status)
-            .unwrap_or(Status::Open);
-        (charity, sponsor, title, match_cap, donated, matched, deadline, donors, status)
+    pub fn info(env: Env, campaign_id: u32) -> Result<Campaign, Error> {
+        load(&env, campaign_id)
     }
 
-    pub fn donation_of(env: Env, donor: Address) -> i128 {
+    pub fn list_campaigns(env: Env) -> Vec<u32> {
+        let next: u32 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
+        let mut ids = Vec::new(&env);
+        for i in 0..next {
+            ids.push_back(i);
+        }
+        ids
+    }
+
+    pub fn donation_of(env: Env, campaign_id: u32, donor: Address) -> i128 {
         env.storage()
             .persistent()
-            .get(&DataKey::Donation(donor))
+            .get(&DataKey::Donation(DonorKey { campaign_id, donor }))
             .unwrap_or(0)
     }
 
-    pub fn refunded(env: Env, donor: Address) -> bool {
-        env.storage().persistent().has(&DataKey::Refunded(donor))
+    pub fn is_refunded(env: Env, campaign_id: u32, donor: Address) -> bool {
+        env.storage()
+            .persistent()
+            .has(&DataKey::Refunded(DonorKey { campaign_id, donor }))
     }
 }
 
