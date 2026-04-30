@@ -7,7 +7,9 @@ Match Up is a small Stellar Testnet dApp where donors pledge XLM to a cause and 
 
 
 [![CI](https://github.com/TMTriet002/charity-match/actions/workflows/ci.yml/badge.svg)](https://github.com/TMTriet002/charity-match/actions)
-[![Live](https://img.shields.io/badge/live-demo-ec4899)](https://match-up-stellar.vercel.app)
+[![Live](https://img.shields.io/badge/live-demo-ec4899)](https://charity-match-tan.vercel.app/)
+
+Video: https://drive.google.com/file/d/1opQ6ICRdr_Og6tIlQisxTrqP1183W7Zz/view?usp=sharing
 
 ## Why This Is Different
 
@@ -97,6 +99,7 @@ Frontend: Vercel's GitHub integration auto-builds on every push to `main` using 
 
 Mobile-first. The CTA pill stays full width below 640px, the gradient bar collapses to two stacked rows, the wallet button shows only the address shorthand. 
 <img width="423" height="646" alt="image" src="https://github.com/user-attachments/assets/9c86cabb-59ba-4782-a1d1-19086e47df0c" />
+
 
 
 ### What errors does it handle?
